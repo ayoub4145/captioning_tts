@@ -6,17 +6,15 @@ import torch
 from gtts import gTTS
 from transformers import BlipProcessor, BlipForConditionalGeneration
 
-# Charger BLIP
-@st.cache_resource
-def load_model():
-    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    return processor, model, device
+# Chargement du modèle et du processeur
+processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
 
-processor, model, device = load_model()
+# Utilisation de GPU si disponible
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
 
+# Titre de l'application
 st.title("📸 BLIP avec Webcam, URL & Synthèse vocale 🔊")
 st.markdown("Décrivez automatiquement une image avec BLIP et écoutez la description en plusieurs langues.")
 
@@ -33,13 +31,13 @@ elif option == "🌐 URL de l'image":
     url = st.text_input("Entrez l'URL d'une image :")
     if url:
         try:
-            response = requests.get(url, stream=True)
+            response = requests.get(url, stream=True, timeout=10)
             image = Image.open(response.raw).convert("RGB")
             st.image(image, caption="Image chargée", use_column_width=True)
         except Exception as e:
             st.error(f"Erreur lors du chargement de l'image : {e}")
 
-# Choix de la langue
+# Choix de la langue pour la synthèse vocale
 lang_map = {
     "Français": "fr",
     "Anglais": "en",
@@ -48,14 +46,13 @@ lang_map = {
 lang_choice = st.selectbox("Choisissez la langue de la synthèse vocale :", list(lang_map.keys()))
 lang_code = lang_map[lang_choice]
 
-# Si une image est chargée
+# Si une image est présente
 if image:
     st.image(image, caption="Image sélectionnée", use_column_width=True)
 
-    # Bouton pour générer
     if st.button("🧠 Générer la description et lire à haute voix"):
         with st.spinner("Génération de la description..."):
-            inputs = processor(image, return_tensors="pt").to(device)
+            inputs = processor(images=image, return_tensors="pt").to(device)
             output = model.generate(**inputs)
             caption = processor.decode(output[0], skip_special_tokens=True)
 
@@ -64,7 +61,10 @@ if image:
 
         # Synthèse vocale
         with st.spinner(f"Synthèse vocale ({lang_choice})..."):
-            tts = gTTS(text=caption, lang=lang_code)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
-                tts.save(fp.name)
-                st.audio(fp.name, format="audio/mp3")
+            try:
+                tts = gTTS(text=caption, lang=lang_code)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+                    tts.save(fp.name)
+                    st.audio(fp.name, format="audio/mp3")
+            except Exception as e:
+                st.error(f"Erreur de synthèse vocale : {e}")
